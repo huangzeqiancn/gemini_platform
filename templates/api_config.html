@@ -8,7 +8,10 @@
                 <button class="nav-link active fw-bold" id="api-tab" data-bs-toggle="tab" data-bs-target="#api-pane">API 密钥管理</button>
             </li>
             <li class="nav-item">
-                <button class="nav-link fw-bold" id="preset-tab" data-bs-toggle="tab" data-bs-target="#preset-pane">系统指令预设 (Lab)</button>
+                <button class="nav-link fw-bold" id="template-tab" data-bs-toggle="tab" data-bs-target="#template-pane">解析模板 (Schema)</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link fw-bold" id="preset-tab" data-bs-toggle="tab" data-bs-target="#preset-pane">系统指令预设</button>
             </li>
         </ul>
     </div>
@@ -20,35 +23,45 @@
                     <form action="/api_config/add" method="post" class="bg-light p-3 rounded shadow-sm border">
                         <div class="mb-2">
                             <label class="small fw-bold text-muted">配置名称</label>
-                            <input type="text" name="name" class="form-control form-control-sm" required>
+                            <input type="text" name="name" class="form-control form-control-sm" placeholder="例如：公司内网AI" required>
                         </div>
                         <div class="mb-2">
                             <label class="small fw-bold text-muted">Base URL</label>
-                            <input type="url" name="base_url" class="form-control form-control-sm" required>
+                            <input type="url" id="input_base_url" name="base_url" class="form-control form-control-sm" placeholder="https://..." required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="small fw-bold text-muted">API Key / Secret</label>
+                            <input type="password" id="input_api_key" name="api_key" class="form-control form-control-sm" required>
                         </div>
                         <div class="mb-3">
-                            <label class="small fw-bold text-muted">API Key</label>
-                            <input type="password" name="api_key" class="form-control form-control-sm" required>
+                            <label class="small fw-bold text-muted">User ID (HMAC 专用)</label>
+                            <input type="text" id="input_api_user" name="api_user" class="form-control form-control-sm" placeholder="非HMAC协议可不填">
                         </div>
-                        <button type="submit" class="btn btn-primary btn-sm w-100 shadow-sm">保存</button>
+                        <button type="submit" class="btn btn-primary btn-sm w-100 shadow-sm">保存配置</button>
                     </form>
                 </div>
                 <div class="col-md-8">
-                    <h6 class="mb-3 fw-bold">密钥列表</h6>
+                    <h6 class="mb-3 fw-bold">已保存密钥</h6>
                     <table class="table table-hover align-middle border">
                         <thead class="table-light">
-                            <tr><th>名称</th><th>Base URL</th><th>Key</th><th>操作</th></tr>
+                            <tr><th>名称</th><th>鉴权模式</th><th>Base URL</th><th>操作</th></tr>
                         </thead>
                         <tbody>
                             {% for cfg in configs %}
                             <tr>
                                 <td><strong>{{ cfg.name }}</strong></td>
-                                <td><small>{{ cfg.base_url }}</small></td>
-                                <td><code>{{ cfg.api_key[:6] }}***</code></td>
+                                <td>
+                                    {% if cfg.api_user %}
+                                    <span class="badge bg-info text-dark"><i class="fas fa-lock"></i> HMAC ({{ cfg.api_user }})</span>
+                                    {% else %}
+                                    <span class="badge bg-light text-muted border"><i class="fas fa-key"></i> Standard</span>
+                                    {% endif %}
+                                </td>
+                                <td><small class="text-muted">{{ cfg.base_url }}</small></td>
                                 <td>
                                     <div class="btn-group">
                                         <button class="btn btn-outline-primary btn-sm" onclick="editApi({{ cfg.id }})">编辑</button>
-                                        <form action="/api_config/delete/{{ cfg.id }}" method="post" onsubmit="return confirm('确定删除？');">
+                                        <form action="/api_config/delete/{{ cfg.id }}" method="post" onsubmit="return confirm('确定删除？');" style="display:inline;">
                                             <button type="submit" class="btn btn-outline-danger btn-sm">删除</button>
                                         </form>
                                     </div>
@@ -61,45 +74,128 @@
             </div>
         </div>
 
+        <div class="tab-pane fade" id="template-pane">
+            <div class="row">
+                <div class="col-md-5">
+                    <h6 class="mb-3 fw-bold text-primary">创建解析模板</h6>
+                    <form action="/templates/add" method="post" class="bg-light p-3 rounded shadow-sm border border-primary mb-4">
+                        <div class="mb-3">
+                            <label class="small fw-bold">模板名称</label>
+                            <input type="text" name="name" class="form-control" placeholder="如：HMAC响应模板" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="small fw-bold">映射规则 (JSON Path)</label>
+                            <textarea name="mapping_rules" id="template_rules" class="form-control font-monospace" rows="4">{"answer": "choices.0.message.content", "tokens": "usage.total_tokens"}</textarea>
+                            <div class="mt-2">
+                                <span class="badge bg-secondary" onclick="fillTemplate('openai')" style="cursor:pointer">OpenAI 标准</span>
+                                <span class="badge bg-dark" onclick="fillTemplate('hmac')" style="cursor:pointer">HMAC 默认</span>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">保存模板</button>
+                    </form>
+
+                    <h6 class="fw-bold mb-3">接口探测实验室 (Lab)</h6>
+                    <div class="p-3 bg-dark text-white rounded shadow">
+                        <p class="text-info mb-3 small"><i class="fas fa-flask"></i> 模拟真实请求获取 JSON 结构</p>
+
+                        <div class="mb-3">
+                            <label class="d-block mb-1 text-muted" style="font-size: 0.75rem;">测试模型名称 (model_marker / model)</label>
+                            <input type="text" id="test_model_name" 
+                                   class="form-control form-control-sm bg-secondary text-white border-0" 
+                                   style="background-color: #2d3748 !important;"
+                                   placeholder="例如: api_google_gemini-3-pro-preview">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="d-block mb-1 text-muted" style="font-size: 0.75rem;">选择 API 配置</label>
+                            <select id="lab_api_selector" class="form-select form-select-sm bg-secondary text-white border-0">
+                                <option value="new">-- 使用左侧“添加 API”处输入的内容 --</option>
+                                {% for cfg in configs %}
+                                <option value="{{ cfg.id }}" data-url="{{ cfg.base_url }}" data-key="{{ cfg.api_key }}" data-user="{{ cfg.api_user }}">
+                                    {{ cfg.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="d-block mb-1 text-muted" style="font-size: 0.75rem;">探测协议类型</label>
+                            <select id="lab_platform" class="form-select form-select-sm bg-secondary text-white border-0">
+                                <option value="official">标准/官方协议 (Bearer)</option>
+                                <option value="api_hmac">私有 HMAC 协议</option>
+                            </select>
+                        </div>
+                        
+                        <button class="btn btn-sm btn-info w-100 fw-bold mt-2 text-dark" onclick="runApiTest()">执行探测请求</button>
+                    </div>
+                </div>
+
+                <div class="col-md-7">
+                    <h6 class="mb-3 fw-bold">已存模板列表</h6>
+                    <div class="bg-light border rounded p-3 mb-3">
+                        <table class="table table-sm small">
+                            <thead><tr><th>模板名称</th><th>规则内容</th><th>操作</th></tr></thead>
+                            <tbody>
+                                {% for t in templates %}
+                                <tr>
+                                    <td>{{ t.name }}</td>
+                                    <td><code>{{ t.mapping_rules }}</code></td>
+                                    <td>
+                                        <form action="/templates/delete/{{ t.id }}" method="post" onsubmit="return confirm('删除模板？');">
+                                            <button type="submit" class="btn btn-link btn-sm text-danger p-0">删除</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        <hr>
+                        <h6 class="small text-muted fw-bold">探测实时返回 (JSON):</h6>
+                        <pre id="json_output" class="small bg-white p-2 border" style="min-height: 200px; max-height: 450px; overflow-y: auto; color: #2d3748;">等待请求数据...</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="tab-pane fade" id="preset-pane">
             <div class="row">
                 <div class="col-md-4">
-                    <h6 class="mb-3 fw-bold">创建新预设</h6>
-                    <form action="/presets/add" method="post" class="bg-light p-3 rounded shadow-sm border text-success">
+                    <h6 class="mb-3 fw-bold text-success">创建新预设</h6>
+                    <form action="/presets/add" method="post" class="bg-light p-3 rounded shadow-sm border border-success">
                         <div class="mb-2">
                             <label class="small fw-bold">预设名称</label>
-                            <input type="text" name="name" class="form-control form-control-sm" placeholder="如：翻译专家" required>
+                            <input type="text" name="name" class="form-control form-control-sm" required>
                         </div>
                         <div class="mb-2">
                             <label class="small fw-bold">指令内容</label>
-                            <textarea name="content" class="form-control form-control-sm" rows="6" required placeholder="可用 {{ '{{current_time}}' }}"></textarea>
+                            <textarea name="content" class="form-control form-control-sm" rows="6" required></textarea>
                         </div>
                         <button type="submit" class="btn btn-success btn-sm w-100 shadow-sm">添加预设</button>
                     </form>
                 </div>
                 <div class="col-md-8">
-                    <h6 class="mb-3 fw-bold">预设列表</h6>
+                    <h6 class="mb-3 fw-bold text-success">预设列表库</h6>
                     <div class="row row-cols-1 row-cols-md-2 g-3">
                         {% for pre in presets %}
                         <div class="col">
                             <div class="card h-100 border-start border-4 border-success shadow-sm">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between">
-                                        <h6 class="card-title fw-bold text-success">{{ pre.name }}</h6>
+                                <div class="card-body p-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h6 class="card-title fw-bold text-success mb-0">{{ pre.name }}</h6>
                                         <div class="dropdown">
                                             <button class="btn btn-sm btn-light border" type="button" data-bs-toggle="dropdown">•••</button>
                                             <ul class="dropdown-menu">
-                                                <li><a class="dropdown-item" href="javascript:void(0)" onclick="editPreset({{ pre.id }})">编辑模板</a></li>
+                                                <li><a class="dropdown-item" href="javascript:void(0)" onclick="editPreset({{ pre.id }})">编辑预设</a></li>
                                                 <li><hr class="dropdown-divider"></li>
                                                 <li>
-                                                    <form action="/presets/delete/{{ pre.id }}" method="post" onsubmit="return confirm('删除模板？');">
-                                                        <button type="submit" class="dropdown-item text-danger">删除模板</button>
+                                                    <form action="/presets/delete/{{ pre.id }}" method="post" onsubmit="return confirm('删除此预设？');">
+                                                        <button type="submit" class="dropdown-item text-danger">删除</button>
                                                     </form>
                                                 </li>
                                             </ul>
                                         </div>
                                     </div>
-                                    <p class="card-text small text-muted text-truncate" style="max-height: 60px;">{{ pre.content }}</p>
+                                    <p class="card-text small text-muted text-truncate">{{ pre.content }}</p>
                                 </div>
                             </div>
                         </div>
@@ -114,14 +210,15 @@
 <div class="modal fade" id="apiModal" tabindex="-1">
     <div class="modal-dialog">
         <form action="/api_config/update" method="post" class="modal-content">
-            <div class="modal-header"><h5>编辑 API 配置</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-header"><h5>编辑 API 配置</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
             <div class="modal-body">
                 <input type="hidden" name="cfg_id" id="api_id">
-                <div class="mb-3"><label class="form-label">名称</label><input type="text" name="name" id="api_name" class="form-control"></div>
-                <div class="mb-3"><label class="form-label">Base URL</label><input type="url" name="base_url" id="api_url" class="form-control"></div>
-                <div class="mb-3"><label class="form-label">API Key</label><input type="text" name="api_key" id="api_key" class="form-control"></div>
+                <div class="mb-3"><label class="form-label small fw-bold">名称</label><input type="text" name="name" id="api_name" class="form-control"></div>
+                <div class="mb-3"><label class="form-label small fw-bold">Base URL</label><input type="url" name="base_url" id="api_url" class="form-control"></div>
+                <div class="mb-3"><label class="form-label small fw-bold">API Key / Secret</label><input type="text" name="api_key" id="api_key_edit" class="form-control"></div>
+                <div class="mb-3"><label class="form-label small fw-bold">User ID (HMAC专用)</label><input type="text" name="api_user" id="api_user_edit" class="form-control"></div>
             </div>
-            <div class="modal-footer"><button type="submit" class="btn btn-primary">更新</button></div>
+            <div class="modal-footer"><button type="submit" class="btn btn-primary">保存修改</button></div>
         </form>
     </div>
 </div>
@@ -129,89 +226,113 @@
 <div class="modal fade" id="presetModal" tabindex="-1">
     <div class="modal-dialog">
         <form action="/presets/update" method="post" class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title">编辑系统指令</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
+            <div class="modal-header bg-success text-white"><h5 class="modal-title">编辑预设</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
             <div class="modal-body">
                 <input type="hidden" name="pre_id" id="edit_modal_id">
-                <div class="mb-3">
-                    <label class="form-label fw-bold">预设名称</label>
-                    <input type="text" name="name" id="edit_modal_name" class="form-control" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">指令内容</label>
-                    <textarea name="content" id="edit_modal_content" class="form-control" rows="8" required></textarea>
-                </div>
+                <div class="mb-3"><label class="form-label fw-bold small">名称</label><input type="text" name="name" id="edit_modal_name" class="form-control" required></div>
+                <div class="mb-3"><label class="form-label fw-bold small">内容</label><textarea name="content" id="edit_modal_content" class="form-control" rows="8" required></textarea></div>
             </div>
-            <div class="modal-footer">
-                <button type="submit" class="btn btn-success">更新预设</button>
-            </div>
+            <div class="modal-footer"><button type="submit" class="btn btn-success">更新</button></div>
         </form>
     </div>
 </div>
 
 <script>
-// 1. API 编辑逻辑
+function fillTemplate(type) {
+    const textarea = document.getElementById('template_rules');
+    if (type === 'openai') {
+        textarea.value = JSON.stringify({"answer": "choices.0.message.content", "tokens": "usage.total_tokens"}, null, 2);
+    } else {
+        textarea.value = JSON.stringify({"answer": "answer.0.value", "tokens": "cost_info.total_tokens"}, null, 2);
+    }
+}
+
+async function runApiTest() {
+    const output = document.getElementById('json_output');
+    const selector = document.getElementById('lab_api_selector');
+    const selectedOption = selector.options[selector.selectedIndex];
+    const model = document.getElementById('test_model_name').value.trim();
+
+    if (!model) {
+        return alert("请输入测试模型名称 (如: gpt-3.5-turbo)！");
+    }
+    
+    let base_url, api_key, api_user;
+    if (selector.value === "new") {
+        base_url = document.getElementById('input_base_url').value;
+        api_key = document.getElementById('input_api_key').value;
+        api_user = document.getElementById('input_api_user').value;
+    } else {
+        base_url = selectedOption.getAttribute('data-url');
+        api_key = selectedOption.getAttribute('data-key');
+        api_user = selectedOption.getAttribute('data-user');
+    }
+
+    const platform_type = document.getElementById('lab_platform').value;
+
+    if (!base_url || !api_key) {
+        return alert("请选择一个 API 或在左侧填写配置信息！");
+    }
+
+    output.innerText = "🚀 正在建立连接并执行签名请求...";
+    try {
+        const res = await fetch('/api_config/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ base_url, api_key, api_user, platform_type, model })
+        });
+        const data = await res.json();
+        output.innerText = JSON.stringify(data, null, 4);
+    } catch (err) {
+        output.innerText = "❌ 探测失败: " + err;
+    }
+}
+
 async function editApi(id) {
-    console.log("正在获取 API 配置, ID:", id); // 调试用
     try {
         const res = await fetch(`/api_config/get/${id}`);
         const data = await res.json();
-        
-        // 填充模态框字段 (检查 HTML 里的 id 是否对应)
         document.getElementById('api_id').value = data.id;
         document.getElementById('api_name').value = data.name;
         document.getElementById('api_url').value = data.base_url;
-        document.getElementById('api_key').value = data.api_key;
-        
-        // 显式唤起 API 模态框
-        const apiModal = new bootstrap.Modal(document.getElementById('apiModal'));
-        apiModal.show();
-    } catch (err) {
-        alert("获取 API 数据失败");
-    }
+        document.getElementById('api_key_edit').value = data.api_key;
+        document.getElementById('api_user_edit').value = data.api_user || '';
+        new bootstrap.Modal(document.getElementById('apiModal')).show();
+    } catch (err) { alert("获取数据失败"); }
 }
 
-// 2. 指令预设编辑逻辑
 async function editPreset(id) {
-    console.log("正在请求预设数据, ID:", id);
     try {
         const res = await fetch(`/presets/get/${id}`);
-        
-        // 如果返回的不是 JSON 而是 HTML，这里会报错，我们提前拦截
-        const contentType = res.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) {
-            console.error("服务器未返回 JSON, 而是:", contentType);
-            throw new Error("后端接口配置错误，未返回正确格式的数据。");
-        }
-
         const data = await res.json();
-
-        // 填充模态框 (确保 ID 一一对应)
         document.getElementById('edit_modal_id').value = data.id;
         document.getElementById('edit_modal_name').value = data.name;
         document.getElementById('edit_modal_content').value = data.content;
-
-        // 显示弹窗
-        const modalEl = document.getElementById('presetModal');
-        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-        modal.show();
-    } catch (err) {
-        console.error("详细错误信息:", err);
-        alert("获取预设数据失败: " + err.message);
-    }
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('presetModal')).show();
+    } catch (err) { alert("获取预设失败"); }
 }
 
-// 3. 页面加载锚点检测 (处理重定向后的标签切换)
 document.addEventListener("DOMContentLoaded", function() {
     const hash = window.location.hash;
-    if (hash === "#preset-pane") {
-        const triggerEl = document.querySelector('#preset-tab');
-        if (triggerEl) {
-            bootstrap.Tab.getOrCreateInstance(triggerEl).show();
-        }
+    if (hash) {
+        const triggerEl = document.querySelector(`button[data-bs-target="${hash}"]`);
+        if (triggerEl) bootstrap.Tab.getOrCreateInstance(triggerEl).show();
     }
 });
 </script>
+
+<style>
+    /* 修正输入框在暗黑背景下的视觉效果 */
+    #test_model_name:focus {
+        background-color: #1a202c !important;
+        color: #fff !important;
+        border-color: #4fd1c5;
+        box-shadow: 0 0 0 0.2rem rgba(79, 209, 197, 0.25);
+    }
+    #json_output { 
+        font-family: 'Fira Code', 'Courier New', monospace; 
+        border-radius: 6px; 
+        background-color: #f8fafc;
+    }
+</style>
 {% endblock %}

@@ -18,6 +18,7 @@
                 <thead class="table-light">
                     <tr>
                         <th class="ps-4">任务名称</th>
+                        <th>平台与解析</th>
                         <th>模型配置</th>
                         <th>创建时间</th>
                         <th>当前状态</th>
@@ -28,15 +29,26 @@
                     {% for task in tasks %}
                     <tr>
                         <td class="ps-4">
-                            <div class="fw-bold">{{ task.name }}</div>
+                            <div class="fw-bold text-dark">{{ task.name }}</div>
                             <div class="text-muted small">ID: #{{ task.id }}</div>
                         </td>
                         <td>
+                            {% if task.platform_type == 'api_hmac' %}
+                                <span class="badge bg-dark-subtle text-dark border-0 mb-1">私有 HMAC</span>
+                            {% else %}
+                                <span class="badge bg-light text-muted border mb-1">标准 API</span>
+                            {% endif %}
+                            <div class="small text-muted text-truncate" style="max-width: 150px;">
+                                <i class="bi bi-cpu"></i> {{ task.template.name if task.template else '默认解析' }}
+                            </div>
+                        </td>
+                        <td>
                             <span class="badge rounded-pill bg-info text-dark">{{ task.model }}</span>
-                            <span class="badge rounded-pill bg-secondary">{{ task.thinking_level }}</span>
+                            <div class="small text-muted mt-1">{{ task.thinking_level }}</div>
                         </td>
                         <td class="text-muted small">
-                            {{ task.created_at.strftime('%Y-%m-%d %H:%M') }}
+                            {{ task.created_at.strftime('%Y-%m-%d') }}<br>
+                            {{ task.created_at.strftime('%H:%M') }}
                         </td>
                         <td>
                             {% if task.status == 'pending' %}
@@ -48,20 +60,23 @@
                                 <span class="spinner-border spinner-border-sm me-1"></span> 抓取中...
                             </span>
                             {% elif task.status == 'completed' %}
-                            <span class="badge bg-success">● 已完成</span>
+                            <span class="badge bg-success text-white">● 已完成</span>
                             {% else %}
                             <span class="badge bg-danger">异常</span>
                             {% endif %}
                         </td>
                         <td class="text-center">
-                            <a href="/results/{{ task.id }}" class="btn btn-sm btn-outline-primary px-3">
-                                查看数据
-                            </a>
+                            <div class="btn-group">
+                                <a href="/results/{{ task.id }}" class="btn btn-sm btn-outline-primary px-3">查看数据</a>
+                                <a href="/data/export?task_id={{ task.id }}" class="btn btn-sm btn-outline-secondary" title="导出数据">
+                                    <i class="bi bi-download"></i>
+                                </a>
+                            </div>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="5" class="text-center py-5">
+                        <td colspan="6" class="text-center py-5">
                             <div class="text-muted">
                                 <i class="bi bi-inbox fs-1 d-block mb-2"></i>
                                 暂无抓取任务，请点击上方按钮开启您的第一次抓取
@@ -84,10 +99,18 @@
             </div>
             <div class="modal-body py-4">
                 <div class="row g-3">
-                    <div class="col-md-6">
+                    <div class="col-md-8">
                         <label class="form-label small fw-bold">任务名称</label>
-                        <input type="text" name="task_name" class="form-control" placeholder="例如：今日热点新闻分析" required>
+                        <input type="text" name="task_name" class="form-control" placeholder="例如：今日热点分析" required>
                     </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold text-primary">协议类型</label>
+                        <select name="platform_type" class="form-select border-primary-subtle" onchange="toggleModelHint(this.value)">
+                            <option value="official">官方标准 (Bearer)</option>
+                            <option value="api_hmac">私有协议 (HMAC)</option>
+                        </select>
+                    </div>
+
                     <div class="col-md-6">
                         <label class="form-label small fw-bold">API 密钥配置</label>
                         <select name="api_id" class="form-select" required>
@@ -96,17 +119,27 @@
                             {% endfor %}
                         </select>
                     </div>
-
                     <div class="col-md-6">
-                        <label class="form-label small fw-bold">Gemini 模型</label>
-                        <select name="model" class="form-select">
-                            {% for m in models %}
-                            <option value="{{ m }}">{{ m }}</option>
+                        <label class="form-label small fw-bold">解析模板 (Schema)</label>
+                        <select name="template_id" class="form-select border-info-subtle" required>
+                            <option value="">-- 必选：解析规则 --</option>
+                            {% for t in templates %}
+                            <option value="{{ t.id }}">{{ t.name }}</option>
                             {% endfor %}
                         </select>
                     </div>
+
                     <div class="col-md-6">
-                        <label class="form-label small fw-bold">思考等级 (Thinking Level)</label>
+                        <label class="form-label small fw-bold">模型名称</label>
+                        <input type="text" name="model" id="model_name" class="form-control" value="gemini-3-flash-preview" list="model_list">
+                        <datalist id="model_list">
+                            {% for m in models %}
+                            <option value="{{ m }}">
+                            {% endfor %}
+                        </datalist>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">思考等级</label>
                         <select name="thinking" class="form-select">
                             {% for t in thinking_levels %}
                             <option value="{{ t }}">{{ t }}</option>
@@ -115,41 +148,45 @@
                     </div>
 
                     <div class="col-md-12">
-                        <label class="form-label small fw-bold text-primary">系统指令预设 (Instruction Preset)</label>
-                        <select name="preset_id" class="form-select border-primary-subtle" required>
-                            <option value="0">-- 不使用预设 (原始模式) --</option>
+                        <label class="form-label small fw-bold text-success">系统指令预设</label>
+                        <select name="preset_id" class="form-select border-success-subtle" required>
+                            <option value="0">-- 不使用预设 --</option>
                             {% for pre in presets %}
                             <option value="{{ pre.id }}">{{ pre.name }}</option>
                             {% endfor %}
                         </select>
-                        <div class="form-text mt-1">
-                            <i class="bi bi-info-circle"></i> 提示：选择包含 <code>{{ '{{current_time}}' }}</code> 变量的模板可确保 AI 获知当前准确日期。
-                        </div>
                     </div>
 
                     <div class="col-md-12">
-                        <label class="form-label small fw-bold">输入 Prompts (每行一个问题)</label>
-                        <textarea name="prompts_text" class="form-control" rows="8" 
-                                  placeholder="输入问题1...&#10;输入问题2...&#10;输入问题3..." required></textarea>
-                        <div class="form-text">系统将并行或依次为您抓取每一行问题的结果。</div>
+                        <label class="form-label small fw-bold">输入 Prompts (每行一个)</label>
+                        <textarea name="prompts_text" class="form-control font-monospace" rows="6" placeholder="输入问题..." required></textarea>
                     </div>
                 </div>
             </div>
             <div class="modal-footer border-0 pt-0">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
-                <button type="submit" class="btn btn-primary px-4">开始批量执行</button>
+                <button type="submit" class="btn btn-primary px-4">执行任务</button>
             </div>
         </form>
     </div>
 </div>
 
 <script>
-    // 如果存在正在运行的任务，则自动刷新页面
+    // 动态调整模型输入提示
+    function toggleModelHint(val) {
+        const modelInput = document.getElementById('model_name');
+        if (val === 'api_hmac') {
+            modelInput.placeholder = "请输入私有模型 Marker";
+            modelInput.value = "";
+        } else {
+            modelInput.value = "gemini-1.5-flash";
+        }
+    }
+
+    // 自动刷新逻辑
     const hasRunningTask = {{ 'true' if tasks|selectattr("status", "equalto", "running")|list|length > 0 else 'false' }};
     if (hasRunningTask) {
-        setTimeout(() => {
-            window.location.reload();
-        }, 10000); // 10秒刷新一次，直到完成
+        setTimeout(() => { window.location.reload(); }, 10000);
     }
 </script>
 {% endblock %}
