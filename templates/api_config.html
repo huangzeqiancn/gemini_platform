@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white text-dark">
+        <ul class="nav nav-tabs card-header-tabs" id="configTab" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link active fw-bold" id="api-tab" data-bs-toggle="tab" data-bs-target="#api-pane">API 密钥管理</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link fw-bold" id="preset-tab" data-bs-toggle="tab" data-bs-target="#preset-pane">系统指令预设 (Lab)</button>
+            </li>
+        </ul>
+    </div>
+    <div class="card-body tab-content">
+        <div class="tab-pane fade show active" id="api-pane">
+            <div class="row">
+                <div class="col-md-4">
+                    <h6 class="mb-3 fw-bold">添加 API 配置</h6>
+                    <form action="/api_config/add" method="post" class="bg-light p-3 rounded shadow-sm border">
+                        <div class="mb-2">
+                            <label class="small fw-bold text-muted">配置名称</label>
+                            <input type="text" name="name" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="small fw-bold text-muted">Base URL</label>
+                            <input type="url" name="base_url" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="small fw-bold text-muted">API Key</label>
+                            <input type="password" name="api_key" class="form-control form-control-sm" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm w-100 shadow-sm">保存</button>
+                    </form>
+                </div>
+                <div class="col-md-8">
+                    <h6 class="mb-3 fw-bold">密钥列表</h6>
+                    <table class="table table-hover align-middle border">
+                        <thead class="table-light">
+                            <tr><th>名称</th><th>Base URL</th><th>Key</th><th>操作</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for cfg in configs %}
+                            <tr>
+                                <td><strong>{{ cfg.name }}</strong></td>
+                                <td><small>{{ cfg.base_url }}</small></td>
+                                <td><code>{{ cfg.api_key[:6] }}***</code></td>
+                                <td>
+                                    <div class="btn-group">
+                                        <button class="btn btn-outline-primary btn-sm" onclick="editApi({{ cfg.id }})">编辑</button>
+                                        <form action="/api_config/delete/{{ cfg.id }}" method="post" onsubmit="return confirm('确定删除？');">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm">删除</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="preset-pane">
+            <div class="row">
+                <div class="col-md-4">
+                    <h6 class="mb-3 fw-bold">创建新预设</h6>
+                    <form action="/presets/add" method="post" class="bg-light p-3 rounded shadow-sm border text-success">
+                        <div class="mb-2">
+                            <label class="small fw-bold">预设名称</label>
+                            <input type="text" name="name" class="form-control form-control-sm" placeholder="如：翻译专家" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="small fw-bold">指令内容</label>
+                            <textarea name="content" class="form-control form-control-sm" rows="6" required placeholder="可用 {{ '{{current_time}}' }}"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-success btn-sm w-100 shadow-sm">添加预设</button>
+                    </form>
+                </div>
+                <div class="col-md-8">
+                    <h6 class="mb-3 fw-bold">预设列表</h6>
+                    <div class="row row-cols-1 row-cols-md-2 g-3">
+                        {% for pre in presets %}
+                        <div class="col">
+                            <div class="card h-100 border-start border-4 border-success shadow-sm">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between">
+                                        <h6 class="card-title fw-bold text-success">{{ pre.name }}</h6>
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-light border" type="button" data-bs-toggle="dropdown">•••</button>
+                                            <ul class="dropdown-menu">
+                                                <li><a class="dropdown-item" href="javascript:void(0)" onclick="editPreset({{ pre.id }})">编辑模板</a></li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li>
+                                                    <form action="/presets/delete/{{ pre.id }}" method="post" onsubmit="return confirm('删除模板？');">
+                                                        <button type="submit" class="dropdown-item text-danger">删除模板</button>
+                                                    </form>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <p class="card-text small text-muted text-truncate" style="max-height: 60px;">{{ pre.content }}</p>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="apiModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="/api_config/update" method="post" class="modal-content">
+            <div class="modal-header"><h5>编辑 API 配置</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <input type="hidden" name="cfg_id" id="api_id">
+                <div class="mb-3"><label class="form-label">名称</label><input type="text" name="name" id="api_name" class="form-control"></div>
+                <div class="mb-3"><label class="form-label">Base URL</label><input type="url" name="base_url" id="api_url" class="form-control"></div>
+                <div class="mb-3"><label class="form-label">API Key</label><input type="text" name="api_key" id="api_key" class="form-control"></div>
+            </div>
+            <div class="modal-footer"><button type="submit" class="btn btn-primary">更新</button></div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="presetModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="/presets/update" method="post" class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">编辑系统指令</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" name="pre_id" id="edit_modal_id">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">预设名称</label>
+                    <input type="text" name="name" id="edit_modal_name" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">指令内容</label>
+                    <textarea name="content" id="edit_modal_content" class="form-control" rows="8" required></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-success">更新预设</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// 1. API 编辑逻辑
+async function editApi(id) {
+    console.log("正在获取 API 配置, ID:", id); // 调试用
+    try {
+        const res = await fetch(`/api_config/get/${id}`);
+        const data = await res.json();
+        
+        // 填充模态框字段 (检查 HTML 里的 id 是否对应)
+        document.getElementById('api_id').value = data.id;
+        document.getElementById('api_name').value = data.name;
+        document.getElementById('api_url').value = data.base_url;
+        document.getElementById('api_key').value = data.api_key;
+        
+        // 显式唤起 API 模态框
+        const apiModal = new bootstrap.Modal(document.getElementById('apiModal'));
+        apiModal.show();
+    } catch (err) {
+        alert("获取 API 数据失败");
+    }
+}
+
+// 2. 指令预设编辑逻辑
+async function editPreset(id) {
+    console.log("正在请求预设数据, ID:", id);
+    try {
+        const res = await fetch(`/presets/get/${id}`);
+        
+        // 如果返回的不是 JSON 而是 HTML，这里会报错，我们提前拦截
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+            console.error("服务器未返回 JSON, 而是:", contentType);
+            throw new Error("后端接口配置错误，未返回正确格式的数据。");
+        }
+
+        const data = await res.json();
+
+        // 填充模态框 (确保 ID 一一对应)
+        document.getElementById('edit_modal_id').value = data.id;
+        document.getElementById('edit_modal_name').value = data.name;
+        document.getElementById('edit_modal_content').value = data.content;
+
+        // 显示弹窗
+        const modalEl = document.getElementById('presetModal');
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    } catch (err) {
+        console.error("详细错误信息:", err);
+        alert("获取预设数据失败: " + err.message);
+    }
+}
+
+// 3. 页面加载锚点检测 (处理重定向后的标签切换)
+document.addEventListener("DOMContentLoaded", function() {
+    const hash = window.location.hash;
+    if (hash === "#preset-pane") {
+        const triggerEl = document.querySelector('#preset-tab');
+        if (triggerEl) {
+            bootstrap.Tab.getOrCreateInstance(triggerEl).show();
+        }
+    }
+});
+</script>
+{% endblock %}

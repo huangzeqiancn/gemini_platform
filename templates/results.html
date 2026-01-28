@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">任务列表</a></li>
+            <li class="breadcrumb-item active">结果详情</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <h2>任务：{{ task.name }}</h2>
+        <div>
+            <span class="badge bg-info text-dark">{{ task.model }}</span>
+            <span class="badge bg-secondary">{{ task.thinking_level }}</span>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    {% for entry in task.entries %}
+    <div class="col-12 mb-4">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3 d-flex justify-content-between">
+                <h6 class="mb-0 text-primary">Q: {{ entry.prompt }}</h6>
+                <small class="text-muted">消耗 Token: {{ entry.tokens_used }}</small>
+            </div>
+            <div class="card-body">
+                <div class="markdown-body" id="content-{{ entry.id }}">
+                    {{ entry.answer }}
+                </div>
+            </div>
+            <div class="card-footer bg-light border-0">
+                <button class="btn btn-sm btn-link text-decoration-none" 
+                        onclick="showRawJson({{ entry.id }})">查看原始 JSON</button>
+            </div>
+            <script type="application/json" id="raw-{{ entry.id }}">
+                {{ entry.raw_response | safe }}
+            </script>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-3 text-muted">正在抓取数据中，请稍后刷新页面...</p>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="modal fade" id="jsonModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">原始 JSON 响应</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre id="jsonViewer" class="bg-dark text-light p-3 rounded" style="max-height: 500px; overflow: auto; font-size: 12px;"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+
+<script>
+    // 1. 初始化 Markdown 渲染
+    document.querySelectorAll('.markdown-body').forEach(el => {
+        const rawContent = el.textContent.trim();
+        el.innerHTML = marked.parse(rawContent);
+    });
+
+    // 2. 初始化代码高亮
+    hljs.highlightAll();
+
+    // 3. 显示 JSON 函数
+    function showRawJson(id) {
+        const rawData = document.getElementById(`raw-${id}`).textContent;
+        const formatted = JSON.stringify(JSON.parse(rawData), null, 4);
+        document.getElementById('jsonViewer').textContent = formatted;
+        new bootstrap.Modal(document.getElementById('jsonModal')).show();
+    }
+</script>
+
+<style>
+    .markdown-body {
+        font-size: 15px;
+        line-height: 1.6;
+    }
+    .card-header { border-bottom: 1px solid #eee; }
+</style>
+{% endblock %}

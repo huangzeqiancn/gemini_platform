@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+    .markdown-body { font-size: 0.85rem; line-height: 1.5; }
+    .markdown-body pre { background: #f6f8fa; padding: 10px; border-radius: 6px; overflow: auto; }
+    .markdown-body code { font-family: Consolas, monospace; background: rgba(175,184,193,0.2); border-radius: 3px; padding: 0.2em 0.4em; }
+    .cursor-pointer { cursor: pointer; transition: background 0.2s; }
+    .cursor-pointer:hover { background-color: #f0f7ff !important; border-color: #0d6efd !important; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="fw-bold"><i class="bi bi-database-fill-gear"></i> 数据管理中心</h2>
+    <div class="btn-group">
+        <a href="/data/export?task_id={{ current_task_id }}&search={{ search }}" class="btn btn-success shadow-sm">
+            <i class="bi bi-file-earmark-excel"></i> 导出当前筛选结果
+        </a>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card bg-primary text-white border-0 shadow-sm">
+            <div class="card-body">
+                <h6 class="small mb-1 text-white-50">总抓取记录</h6>
+                <h3 class="mb-0">{{ stats.total_count }} 条</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-info text-white border-0 shadow-sm">
+            <div class="card-body">
+                <h6 class="small mb-1 text-white-50">累计 Tokens 消耗</h6>
+                <h3 class="mb-0">{{ stats.total_tokens }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-success text-white border-0 shadow-sm">
+            <div class="card-body">
+                <h6 class="small mb-1 text-white-50">平均单次成本 (Tokens)</h6>
+                <h3 class="mb-0">{{ stats.avg_tokens }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+        <form action="/data_center" method="get" class="row g-3">
+            <div class="col-md-4">
+                <input type="text" name="search" class="form-control" placeholder="搜索关键词..." value="{{ search }}">
+            </div>
+            <div class="col-md-3">
+                <select name="task_id" class="form-select">
+                    <option value="0">所有任务</option>
+                    {% for t in tasks %}
+                    <option value="{{ t.id }}" {% if t.id == current_task_id %}selected{% endif %}>{{ t.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">筛选数据</button>
+            </div>
+            <div class="col-md-1">
+                <a href="/data_center" class="btn btn-light w-100">重置</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="d-flex justify-content-start mb-3 align-items-center bg-white p-3 rounded shadow-sm border">
+    <div class="form-check me-3">
+        <input class="form-check-input" type="checkbox" id="selectAll" style="transform: scale(1.2);">
+        <label class="form-check-label small fw-bold ms-1" for="selectAll">全选本页</label>
+    </div>
+    <button class="btn btn-outline-danger btn-sm px-3" onclick="handleBatchDelete()">
+        <i class="bi bi-trash"></i> 批量删除所选
+    </button>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th style="width: 40px;"></th> 
+                    <th style="width: 12%">所属任务</th>
+                    <th style="width: 20%">Prompt</th>
+                    <th style="width: 40%">AI 回答内容 (点击预览)</th>
+                    <th>Tokens</th>
+                    <th>抓取时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in entries %}
+                <tr>
+                    <td>
+                        <input type="checkbox" class="entry-checkbox form-check-input" value="{{ entry.id }}">
+                    </td>
+                    <td class="small fw-bold text-primary">{{ entry.task.name if entry.task else "未归类" }}</td>
+                    <td class="small text-muted text-truncate" style="max-width: 150px;" title="{{ entry.prompt }}">
+                        {{ entry.prompt }}
+                    </td>
+                    <td>
+                        <div class="markdown-body p-2 rounded small border bg-light cursor-pointer answer-render-box" 
+                             style="max-height: 120px; overflow-y: hidden;" 
+                             onclick="previewContent(this)"
+                             data-raw="{{ entry.answer }}">
+                            {{ entry.answer }}
+                        </div>
+                    </td>
+                    <td><span class="badge bg-light text-dark border">{{ entry.tokens_used }}</span></td>
+                    <td class="small text-muted">{{ entry.created_at.strftime('%Y-%m-%d %H:%M') if entry.created_at else "" }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-5">未发现匹配的抓取数据</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="contentModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title"><i class="bi bi-eye"></i> 内容详情预览</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body bg-white" id="modalBody">
+                </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" onclick="copyToClipboard()">
+                    <i class="bi bi-clipboard"></i> 复制全文
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // 1. 配置 Marked 选项
+    marked.setOptions({
+        highlight: function(code, lang) {
+            if (lang && hljs.getLanguage(lang)) {
+                return hljs.highlight(code, { language: lang }).value;
+            }
+            return hljs.highlightAuto(code).value;
+        },
+        breaks: true,
+        gfm: true
+    });
+
+    // 2. 渲染表格内的 Markdown
+    document.querySelectorAll('.answer-render-box').forEach(box => {
+        const raw = box.getAttribute('data-raw');
+        if (raw) {
+            box.innerHTML = marked.parse(raw);
+        }
+    });
+});
+
+// 全选/取消全选
+document.getElementById('selectAll').addEventListener('change', function() {
+    document.querySelectorAll('.entry-checkbox').forEach(cb => cb.checked = this.checked);
+});
+
+// 预览功能
+function previewContent(element) {
+    const raw = element.getAttribute('data-raw');
+    document.getElementById('modalBody').innerHTML = `<div class="markdown-body">${marked.parse(raw)}</div>`;
+    // 重新触发预览窗口的代码高亮
+    document.querySelectorAll('#modalBody pre code').forEach((el) => {
+        hljs.highlightElement(el);
+    });
+    new bootstrap.Modal(document.getElementById('contentModal')).show();
+}
+
+// 复制功能
+function copyToClipboard() {
+    const text = document.getElementById('modalBody').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = event.target.closest('button');
+        const oldText = btn.innerHTML;
+        btn.innerHTML = '<i class="bi bi-check-lg"></i> 已复制';
+        setTimeout(() => btn.innerHTML = oldText, 2000);
+    });
+}
+
+// 批量删除
+async function handleBatchDelete() {
+    const selected = Array.from(document.querySelectorAll('.entry-checkbox:checked')).map(cb => parseInt(cb.value));
+    if (selected.length === 0) return alert("请先勾选要删除的数据");
+    if (!confirm(`确定要永久删除这 ${selected.length} 条记录吗？`)) return;
+
+    try {
+        const res = await fetch('/data/batch_delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(selected)
+        });
+        if (res.ok) location.reload();
+        else alert("删除操作失败，请重试");
+    } catch (err) {
+        alert("网络错误，无法连接服务器");
+    }
+}
+</script>
+{% endblock %}
